@@ -2,6 +2,7 @@ import os
 import json
 import html
 import asyncio
+from datetime import datetime
 
 from aiogram import Bot, Dispatcher, F, types
 from aiogram.client.default import DefaultBotProperties
@@ -17,8 +18,8 @@ from dotenv import load_dotenv
 
 # ---------------- SOZLAMALAR ----------------
 load_dotenv()
-TOKEN = os.getenv("BOT_TOKEN")  # BotFather'dan olingan token to'g'ri qo'yildi
-ORDERS_GROUP_ID = int(os.getenv("ORDERS_GROUP_ID"))  # Bu yerga zakazlar borib tushadigan guruh ID raqamini yozasan (masalan: -100123456789)
+TOKEN = os.getenv("BOT_TOKEN")  # BotFather'dan olingan token
+ORDERS_GROUP_ID = int(os.getenv("ORDERS_GROUP_ID"))  # Guruh ID raqami (-1004481951922)
 
 # BotFather'dagi "KATALOG" Mini App'ga bergan HTTPS manzil
 WEBAPP_URL = "https://barchinoy-boutique-tmacom.netlify.app/"
@@ -163,7 +164,6 @@ async def back_to_main(callback: types.CallbackQuery):
 
 
 # ---------------- MINI APP'DAN KELGAN BUYURTMA ----------------
-# Fayl boshida kerak: import json, html; from datetime import datetime
 @dp.message(F.web_app_data)
 async def handle_tma_order(message: types.Message):
     try:
@@ -176,31 +176,27 @@ async def handle_tma_order(message: types.Message):
     items = data.get("items", [])
     delivery = data.get("delivery", {})
 
-    # Mahsulotlar: o'lcham bilan
+    # Mahsulotlar ro'yxati va o'lchamlari
     lines = "\n".join(
         f"• {html.escape(str(i.get('name', '')))} [{html.escape(str(i.get('size', '—')))}] — "
         f"{i.get('quantity', 0)} ta × {money(i.get('price', 0))} = {money(i.get('subtotal', 0))} UZS"
         for i in items
     )
 
-    # Qabul qilish usuli: yetkazib berish (manzil) yoki olib ketish (kun va soat)
-    if delivery.get("type") == "pickup":
-        raw_date = str(delivery.get("pickup_date", ""))
+    # Qabul qilish usuli (Yetkazib berish yoki Olib ketish)
+    deliv_type = delivery.get("type")
+    if deliv_type == "pickup":
+        raw_date = delivery.get("pickup_date", "")
         try:
-            pickup_date = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%d.%m.%Y")
-        except ValueError:
-            pickup_date = raw_date or "—"
-        pickup_time = str(delivery.get("pickup_time", "")) or "—"
-        delivery_block = (
-            "🏪 <b>Olib ketadi</b>\n"
-            f"📅 Kun: {html.escape(pickup_date)}\n"
-            f"⏰ Soat: {html.escape(pickup_time)}"
-        )
+            pickup_date_formatted = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except Exception:
+            pickup_date_formatted = raw_date
+            
+        delivery_line = f"📍 <b>Olib ketish (Do'kondan):</b> {pickup_date_formatted} soat {delivery.get('pickup_time', '')}"
+        address_line = "🏪 Manzil: Do'kondan o'zi olib ketadi"
     else:
-        delivery_block = (
-            "🚚 <b>Yetkazib berish</b>\n"
-            f"📍 Manzil: {html.escape(str(delivery.get('address', '—')))}"
-        )
+        delivery_line = "🚚 <b>Yetkazib berish</b>"
+        address_line = f"📍 Manzil: {html.escape(delivery.get('address', ''))}"
 
     username = f"@{message.from_user.username}" if message.from_user.username else "—"
 
@@ -208,9 +204,11 @@ async def handle_tma_order(message: types.Message):
         "🛒 <b>Yangi zakaz</b>\n\n"
         f"👤 {html.escape(customer.get('name', ''))} ({html.escape(username)})\n"
         f"📞 {html.escape(customer.get('phone', ''))}\n"
+        f"{address_line}\n"
         f"💬 {html.escape(customer.get('comment') or '—')}\n\n"
-        f"{delivery_block}\n\n"
         f"{lines}\n\n"
+        f"🧾 Mahsulotlar: {money(data.get('subtotal', 0))} UZS\n"
+        f"{delivery_line}\n"
         f"💰 <b>Jami: {money(data.get('total_price', 0))} UZS</b>"
     )
 
@@ -227,6 +225,7 @@ async def handle_tma_order(message: types.Message):
         return
 
     await message.answer("✅ Buyurtmangiz qabul qilindi! Tez orada telefon qilamiz!")
+
 
 # ---------------- ISHGA TUSHIRISH ----------------
 async def main():
