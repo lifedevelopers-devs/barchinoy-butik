@@ -163,6 +163,7 @@ async def back_to_main(callback: types.CallbackQuery):
 
 
 # ---------------- MINI APP'DAN KELGAN BUYURTMA ----------------
+# Fayl boshida kerak: import json, html; from datetime import datetime
 @dp.message(F.web_app_data)
 async def handle_tma_order(message: types.Message):
     try:
@@ -175,21 +176,31 @@ async def handle_tma_order(message: types.Message):
     items = data.get("items", [])
     delivery = data.get("delivery", {})
 
-    # Mahsulotlar: endi o'lcham ham chiqadi
+    # Mahsulotlar: o'lcham bilan
     lines = "\n".join(
         f"• {html.escape(str(i.get('name', '')))} [{html.escape(str(i.get('size', '—')))}] — "
         f"{i.get('quantity', 0)} ta × {money(i.get('price', 0))} = {money(i.get('subtotal', 0))} UZS"
         for i in items
     )
 
-    # Yetkazib berish turi va komissiya
-    if delivery.get("type") == "express":
-        delivery_line = (
-            f"🚚 Ekspress (komissiya {delivery.get('commission_percent', 0)}%: "
-            f"+{money(delivery.get('commission_amount', 0))} UZS)"
+    # Qabul qilish usuli: yetkazib berish (manzil) yoki olib ketish (kun va soat)
+    if delivery.get("type") == "pickup":
+        raw_date = str(delivery.get("pickup_date", ""))
+        try:
+            pickup_date = datetime.strptime(raw_date, "%Y-%m-%d").strftime("%d.%m.%Y")
+        except ValueError:
+            pickup_date = raw_date or "—"
+        pickup_time = str(delivery.get("pickup_time", "")) or "—"
+        delivery_block = (
+            "🏪 <b>Olib ketadi</b>\n"
+            f"📅 Kun: {html.escape(pickup_date)}\n"
+            f"⏰ Soat: {html.escape(pickup_time)}"
         )
     else:
-        delivery_line = "🚚 Standart"
+        delivery_block = (
+            "🚚 <b>Yetkazib berish</b>\n"
+            f"📍 Manzil: {html.escape(str(delivery.get('address', '—')))}"
+        )
 
     username = f"@{message.from_user.username}" if message.from_user.username else "—"
 
@@ -197,11 +208,9 @@ async def handle_tma_order(message: types.Message):
         "🛒 <b>Yangi zakaz</b>\n\n"
         f"👤 {html.escape(customer.get('name', ''))} ({html.escape(username)})\n"
         f"📞 {html.escape(customer.get('phone', ''))}\n"
-        f"📍 {html.escape(customer.get('address', ''))}\n"
         f"💬 {html.escape(customer.get('comment') or '—')}\n\n"
+        f"{delivery_block}\n\n"
         f"{lines}\n\n"
-        f"🧾 Mahsulotlar: {money(data.get('subtotal', 0))} UZS\n"
-        f"{delivery_line}\n"
         f"💰 <b>Jami: {money(data.get('total_price', 0))} UZS</b>"
     )
 
@@ -218,7 +227,6 @@ async def handle_tma_order(message: types.Message):
         return
 
     await message.answer("✅ Buyurtmangiz qabul qilindi! Tez orada telefon qilamiz!")
-
 
 # ---------------- ISHGA TUSHIRISH ----------------
 async def main():
